@@ -1,7 +1,8 @@
 import { execFile } from 'child_process';
 import * as vscode from 'vscode';
+import { GitHubHost } from './host';
 
-export const GITHUB_PROVIDER = 'github';
+export const AUTH_PROVIDERS = ['github', 'github-enterprise'];
 export const SCOPES = ['repo'];
 
 export type CredentialSource = 'vscode' | 'gh' | 'anonymous';
@@ -13,20 +14,25 @@ export interface Credential {
 	label: string;
 }
 
-/** VS Code's built-in GitHub session, without prompting. */
-async function vscodeSilent(): Promise<Credential | undefined> {
+function fromSession(session: vscode.AuthenticationSession): Credential {
+	return { source: 'vscode', token: session.accessToken, label: `VS Code (${session.account.label})` };
+}
+
+/** VS Code's built-in session for the host's provider, without prompting. */
+async function vscodeSilent(host: GitHubHost): Promise<Credential | undefined> {
 	try {
-		const session = await vscode.authentication.getSession(GITHUB_PROVIDER, SCOPES, { silent: true });
-		return session ? { source: 'vscode', token: session.accessToken, label: `VS Code (${session.account.label})` } : undefined;
+		const session = await vscode.authentication.getSession(host.authProvider, SCOPES, { silent: true });
+		return session ? fromSession(session) : undefined;
 	} catch {
+		// Provider not available, for example github-enterprise without github-enterprise.uris.
 		return undefined;
 	}
 }
 
-/** Token from the GitHub CLI, if it is installed and signed in. */
-export function ghToken(timeoutMs = 5000): Promise<string | undefined> {
+/** Token from the GitHub CLI for this host, if it is installed and signed in. */
+export function ghToken(hostname: string, timeoutMs = 5000): Promise<string | undefined> {
 	return new Promise((resolve) => {
-		execFile('gh', ['auth', 'token', '--hostname', 'github.com'], { timeout: timeoutMs, windowsHide: true }, (err, stdout) => {
+		execFile('gh', ['auth', 'token', '--hostname', hostname], { timeout: timeoutMs, windowsHide: true }, (err, stdout) => {
 			const token = stdout?.trim();
 			resolve(!err && token ? token : undefined);
 		});
@@ -35,15 +41,15 @@ export function ghToken(timeoutMs = 5000): Promise<string | undefined> {
 
 /**
  * Credentials to try, in order, none of which prompt the user:
- * the VS Code GitHub session, then the gh CLI, then no token (public repos).
+ * the VS Code session, then the gh CLI, then no token (public repos).
  */
-export async function silentCredentials(): Promise<Credential[]> {
+export async function silentCredentials(host: GitHubHost): Promise<Credential[]> {
 	const list: Credential[] = [];
-	const vs = await vscodeSilent();
+	const vs = await vscodeSilent(host);
 	if (vs) {
 		list.push(vs);
 	}
-	const gh = await ghToken();
+	const gh = await ghToken(host.hostname);
 	if (gh) {
 		list.push({ source: 'gh', token: gh, label: 'GitHub CLI' });
 	}
@@ -52,7 +58,17 @@ export async function silentCredentials(): Promise<Credential[]> {
 }
 
 /** Interactive VS Code sign-in. Shows the consent dialog. */
-export async function signIn(): Promise<Credential | undefined> {
-	const session = await vscode.authentication.getSession(GITHUB_PROVIDER, SCOPES, { createIfNone: true });
-	return session ? { source: 'vscode', token: session.accessToken, label: `VS Code (${session.account.label})` } : undefined;
+export async function signIn(host: GitHubHost): Promise<Credential | undefined> {
+	if (host.authProvider === 'github-enterprise') {
+		const uris = vscode.workspace.getConfiguration('github-enterprise').get<string[]>('uris') ?? [];
+		const legacy = vscode.workspace.getConfiguration('github-enterprise').get<string>('uri') ?? '';
+		const known = [...uris, legacy].map((u) => u.replace(/\/+$/, '').toLowerCase());
+		if (!known.includes(host.webUrl.toLowerCase())) {
+			throw new Error(
+				`To sign in to ${host.webUrl}, add it to the github-enterprise.uris setting (VS Code's GitHub Enterprise sign-in), then try again.`,
+			);
+		}
+	}
+	const session = await vscode.authentication.getSession(host.authProvider, SCOPES, { createIfNone: true });
+	return session ? fromSession(session) : undefined;
 }

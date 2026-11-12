@@ -19,6 +19,22 @@ suite('Extension', () => {
 		}
 	});
 
+	test('host and repo settings are user-only, so a workspace cannot redirect the token', () => {
+		const ext = vscode.extensions.all.find((e) => e.packageJSON.name === 'prompt-library')!;
+		const props = ext.packageJSON.contributes.configuration.properties;
+		assert.strictEqual(props['promptLibrary.githubUrl'].scope, 'application');
+		assert.strictEqual(props['promptLibrary.repo'].scope, 'application');
+	});
+
+	test('baked-in github-enterprise.uris default takes effect', function () {
+		const ext = vscode.extensions.all.find((e) => e.packageJSON.name === 'prompt-library')!;
+		const baked = ext.packageJSON.contributes.configurationDefaults?.['github-enterprise.uris'];
+		if (!baked) {
+			this.skip(); // Only present in builds configured for GHE.com or Enterprise Server.
+		}
+		assert.deepStrictEqual(vscode.workspace.getConfiguration('github-enterprise').get('uris'), baked);
+	});
+
 	test('every contributed command is registered', async () => {
 		const ext = vscode.extensions.all.find((e) => e.packageJSON.name === 'prompt-library')!;
 		await ext.activate();

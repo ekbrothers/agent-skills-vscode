@@ -28,9 +28,28 @@ Installed items are recorded in `.vscode/prompt-library.lock.json`. Commit it al
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `promptLibrary.repo` | (empty) | `owner/name` of the content repo. |
+| `promptLibrary.repo` | (empty, or set at build time) | `owner/name` of the content repo. User settings only. |
+| `promptLibrary.githubUrl` | `https://github.com` | GitHub instance. Use `https://<name>.ghe.com` for GHE.com or your server URL for Enterprise Server. User settings only. |
 | `promptLibrary.tools` | `["claude", "copilot", "cortex"]` | Tools to install skills for. |
 | `promptLibrary.pathStrategy` | `shared` | `shared` writes each skill once to `.claude/skills/<id>/`, which all three tools read. `dedicated` writes to `.claude/skills/`, `.github/skills/` and `.cortex/skills/` per tool. |
+
+## Managed skills
+
+Skills from the library are managed by the extension and can't be edited locally. Their files are written read-only and open read-only in the editor. Installing or updating a skill replaces any local changes. To change a skill, open a pull request on the content repo.
+
+## Setting up in a new organization
+
+Nothing org-specific is in the code. In the extension repo's settings (Settings > Secrets and variables > Actions > Variables), or at the org level, set:
+
+| Variable | Example | Purpose |
+| --- | --- | --- |
+| `PROMPT_LIBRARY_REPO` | `my-org/agent-skills-library` | Default content repo baked into the `.vsix`. |
+| `PROMPT_LIBRARY_GITHUB_URL` | `https://github.com` | Only needed for GHE.com or Enterprise Server. |
+| `PROMPT_LIBRARY_PUBLISHER` | `my-org-tools` | Publisher id for the Private Marketplace. |
+
+All are optional. CI and release builds apply them with `npm run configure` before packaging. People can still override the settings in their user settings.
+
+The content repo needs no configuration. Its workflows use whatever repo they run in.
 
 ## Development
 

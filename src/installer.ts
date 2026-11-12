@@ -75,11 +75,21 @@ interface StagedTarget {
  * place with renames. If any swap fails, every completed swap is rolled back,
  * so the workspace ends up either fully updated or unchanged.
  */
+export interface InstallItemOptions {
+	/**
+	 * Write files without write permission (0444, or 0555 under scripts/).
+	 * Library skills are managed: local edits are not supported. Default true.
+	 */
+	readOnly?: boolean;
+}
+
 export async function installItem(
 	workspaceRoot: string,
 	item: LibraryItem,
 	targets: readonly ResolvedTarget[],
+	options: InstallItemOptions = {},
 ): Promise<InstallResult> {
+	const readOnly = options.readOnly ?? true;
 	assertValidItemId(item.id);
 	if (targets.length === 0) {
 		throw new Error('No install targets. Check the promptLibrary.tools setting.');
@@ -111,6 +121,9 @@ export async function installItem(
 				const abs = path.join(stageDir, ...rel.split('/'));
 				await fs.mkdir(path.dirname(abs), { recursive: true });
 				await fs.writeFile(abs, data);
+				if (readOnly) {
+					await fs.chmod(abs, rel.startsWith('scripts/') ? 0o555 : 0o444);
+				}
 				files[`${target.dir}/${rel}`] = sha256(data);
 			}
 		}

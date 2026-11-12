@@ -1,6 +1,5 @@
 // Minimal GitHub REST client: latest release and asset download. No vscode imports, so it is unit-testable.
 
-export const API_BASE = 'https://api.github.com';
 export const MAX_ASSET_BYTES = 20 * 1024 * 1024;
 
 export type GitHubErrorKind = 'unauthorized' | 'notFound' | 'sso' | 'rateLimit' | 'network' | 'http';
@@ -82,9 +81,14 @@ async function send(fetchFn: FetchFn, url: string, init: RequestInit, what: stri
 	}
 }
 
-export async function getLatestRelease(repo: string, token: string | undefined, fetchFn: FetchFn = fetch): Promise<Release> {
+export async function getLatestRelease(
+	apiBase: string,
+	repo: string,
+	token: string | undefined,
+	fetchFn: FetchFn = fetch,
+): Promise<Release> {
 	const what = `Latest release of ${repo}`;
-	const res = await send(fetchFn, `${API_BASE}/repos/${repo}/releases/latest`, { headers: headers(token, 'application/vnd.github+json') }, what);
+	const res = await send(fetchFn, `${apiBase}/repos/${repo}/releases/latest`, { headers: headers(token, 'application/vnd.github+json') }, what);
 	if (!res.ok) {
 		throw await toError(res, what);
 	}

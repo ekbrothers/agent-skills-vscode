@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { Credential, signIn, silentCredentials } from './auth';
 import { downloadAsset, getLatestRelease, GitHubError, isValidRepo, Release } from './github';
+import { GitHubHost, resolveGitHubHost } from './host';
 import { sha256 } from './hash';
 import { IndexItem, LibraryIndex, parseIndex } from './indexSchema';
 import { log } from './log';
@@ -39,7 +40,15 @@ export class LibraryService implements vscode.Disposable {
 	/** Re-reads the latest release. Tries each silent credential until one can see the repo. */
 	async refresh(interactive = false): Promise<void> {
 		const gen = ++this.generation;
-		const repo = vscode.workspace.getConfiguration('promptLibrary').get<string>('repo', '').trim();
+		const config = vscode.workspace.getConfiguration('promptLibrary');
+		const repo = config.get<string>('repo', '').trim();
+		let host: GitHubHost;
+		try {
+			host = resolveGitHubHost(config.get<string>('githubUrl'));
+		} catch (err) {
+			this.setStatus({ kind: 'error', message: (err as Error).message });
+			return;
+		}
 		this.repo = repo;
 		if (!repo) {
 			this.index = undefined;
@@ -54,16 +63,16 @@ export class LibraryService implements vscode.Disposable {
 
 		let candidates: Credential[];
 		if (interactive) {
-			const c = await signIn();
+			const c = await signIn(host);
 			candidates = c ? [c] : [];
 		} else {
-			candidates = await silentCredentials();
+			candidates = await silentCredentials(host);
 		}
 
 		let lastError: GitHubError | undefined;
 		for (const cred of candidates) {
 			try {
-				const release = await getLatestRelease(repo, cred.token);
+				const release = await getLatestRelease(host.apiBase, repo, cred.token);
 				const asset = release.assets.find((a) => a.name === INDEX_ASSET);
 				if (!asset) {
 					throw new Error(`The latest release of ${repo} (${release.tag}) has no ${INDEX_ASSET}.`);
@@ -78,7 +87,7 @@ export class LibraryService implements vscode.Disposable {
 				this.release = release;
 				this.credential = cred;
 				this.index = index;
-				log(`Loaded ${index.items.length} items from ${repo} ${release.tag} using ${cred.label}.`);
+				log(`Loaded ${index.items.length} items from ${host.webUrl}/${repo} ${release.tag} using ${cred.label}.`);
 				this.setStatus({ kind: 'ready' });
 				return;
 			} catch (err) {

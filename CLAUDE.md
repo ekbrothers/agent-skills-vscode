@@ -26,6 +26,8 @@ Confirmed by Evan:
 - Targets all three tools: Claude Code, GitHub Copilot, Snowflake Cortex Code.
 - Users must be able to update content continually and automatically from VS Code.
 - Distribution is an internal gallery (VS Code Private Marketplace, GitHub Enterprise Cloud org).
+- Nothing org-specific is hard-coded. The content repo, GitHub URL and publisher are GitHub Actions variables baked in at package time, and users can override the settings.
+- Library skills are managed. Local edits are not supported: files are written read-only, open read-only in the editor, and installs or updates overwrite local changes without asking.
 
 Decided by Claude on 2026-11-12 after Evan said "figure it out". Revisit any that turn out wrong:
 - Audience: MLOps and data science developers, same as the sister project DIP (its spec covers Python, Streamlit and FastAPI data products on Snowflake).
@@ -148,16 +150,30 @@ Local edit detection: hash the file on disk and compare to the recorded hash. St
 ### Update flow
 1. Triggers: `onStartupFinished`, a timer (every few hours while open), and the command "Prompt Library: Check for Updates".
 2. Fetch `index.json`. Compare `latest` to the lock file for each installed item.
-3. For each item needing an update, hash installed files.
-   - Hashes match the lock: update silently.
-   - Hashes differ: notification with Overwrite, Keep Mine, Show Diff (`vscode.diff`).
-4. After silent updates, show one low-key message ("Updated N skills") with a "View changes" button.
+3. Hash installed files against the lock. Local edits are not supported (Evan, 2026-11-12), so:
+   - An item behind `latest` is updated, whether or not it was edited.
+   - An item at `latest` whose files differ from the lock is restored from the library.
+   - The log records every discarded edit. There is no Keep Mine or diff flow.
+4. After updates, show one low-key message ("Updated N skills") with a "View changes" button.
 
 ### Settings
 - `promptLibrary.autoUpdate`: `off` | `notify` | `auto` (default `auto`)
 - `promptLibrary.tools`: array of `claude` | `copilot` | `cortex` (default all three)
 - `promptLibrary.pathStrategy`: `shared` | `dedicated` (default `shared`)
-- `promptLibrary.repo`: `owner/repo` of the content repo
+- `promptLibrary.repo`: `owner/repo` of the content repo. Scope `application` (user settings only).
+- `promptLibrary.githubUrl`: web URL of the GitHub instance, default `https://github.com`. Scope `application` so a workspace cannot send the token to another host. GHE.com maps to `api.<name>.ghe.com`, Enterprise Server to `<url>/api/v3`; both use the `github-enterprise` auth provider, which needs `github-enterprise.uris`.
+
+### Build-time configuration
+`scripts/configure.mjs` patches package.json before `vsce package`, from these GitHub Actions variables (repo or org level). All optional:
+- `PROMPT_LIBRARY_REPO`: default for `promptLibrary.repo`.
+- `PROMPT_LIBRARY_GITHUB_URL`: default for `promptLibrary.githubUrl`. If not github.com, also sets a `configurationDefaults` entry for `github-enterprise.uris` (verified in a VS Code test instance).
+- `PROMPT_LIBRARY_PUBLISHER`: the manifest `publisher`.
+- The manifest `repository` comes from the CI run's own repo.
+
+### Managed files
+- Installer writes files 0444 (0555 under `scripts/`). On Windows that sets the read-only attribute.
+- `managedFiles` tracks every path in the lock files and runs `workbench.action.files.setActiveEditorReadonlyInSession` when one opens.
+- Only a folder the lock file does not know about (a name collision with someone's own skill) prompts before replacement.
 
 ## Stages
 
@@ -186,7 +202,7 @@ Stop and summarize.
 - Limitations: install state in the tree comes from the first workspace folder's lock file. No local-edit indicator in the tree yet (Stage 4).
 
 ### Stage 4: update engine
-- Triggers, silent update, local edit handling, diff view, `autoUpdate` setting.
+- Triggers, silent update, restoring edited items, `autoUpdate` setting. No diff view or Keep Mine (local edits are not supported).
 
 ### Stage 5: removal, packaging, publish
 - Uninstall driven by the lock file, `vsce package`, publish to the Private Marketplace.

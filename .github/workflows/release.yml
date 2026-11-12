@@ -42,6 +42,15 @@ jobs:
       - name: Integration tests (VS Code test instance)
         run: xvfb-run -a npm test
 
+      # Organization-specific defaults come from GitHub Actions variables
+      # (repo or org Settings > Secrets and variables > Actions > Variables).
+      - name: Apply organization settings
+        env:
+          PROMPT_LIBRARY_REPO: ${{ vars.PROMPT_LIBRARY_REPO }}
+          PROMPT_LIBRARY_GITHUB_URL: ${{ vars.PROMPT_LIBRARY_GITHUB_URL }}
+          PROMPT_LIBRARY_PUBLISHER: ${{ vars.PROMPT_LIBRARY_PUBLISHER }}
+        run: npm run configure
+
       - name: Package
         run: npm run package
 

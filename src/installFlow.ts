@@ -63,8 +63,12 @@ export async function installIntoWorkspace(folder: vscode.WorkspaceFolder, item:
 	const targets = resolveTargets(item.id, tools, strategy);
 	const lock = await readLockFile(root);
 	const checks = await checkTargets(root, item.id, targets, lock);
-	if (!(await confirmOverwrite(item.id, checks))) {
+	if (!(await confirmUnmanagedOverwrite(item.id, checks))) {
 		return false;
+	}
+	for (const c of checks.filter((x) => x.state === 'modified')) {
+		// Library skills are managed. Local edits are not supported and are replaced without asking.
+		log(`Discarding local changes in ${c.dir}; library skills are managed and cannot be edited locally.`);
 	}
 
 	const result = await installItem(root, item, targets);
@@ -74,16 +78,22 @@ export async function installIntoWorkspace(folder: vscode.WorkspaceFolder, item:
 	return true;
 }
 
-async function confirmOverwrite(itemId: string, checks: TargetCheck[]): Promise<boolean> {
-	const risky = checks.filter((c) => c.state === 'modified' || c.state === 'unmanaged');
-	if (risky.length === 0) {
+/**
+ * Asks only when a folder exists that Prompt Library did not install, which is
+ * a name collision with someone's own skill, not an edit of a library skill.
+ */
+async function confirmUnmanagedOverwrite(itemId: string, checks: TargetCheck[]): Promise<boolean> {
+	const unmanaged = checks.filter((c) => c.state === 'unmanaged');
+	if (unmanaged.length === 0) {
 		return true;
 	}
-	const detail = risky
-		.map((c) => (c.state === 'modified' ? `${c.dir} has local changes.` : `${c.dir} exists but was not installed by Prompt Library.`))
-		.join('\n');
-	const choice = await vscode.window.showWarningMessage(`Installing ${itemId} will replace existing files.`, { modal: true, detail }, 'Overwrite');
-	return choice === 'Overwrite';
+	const detail = unmanaged.map((c) => `${c.dir} exists but was not installed by Prompt Library.`).join('\n');
+	const choice = await vscode.window.showWarningMessage(
+		`Installing ${itemId} will replace a folder with the same name.`,
+		{ modal: true, detail },
+		'Replace',
+	);
+	return choice === 'Replace';
 }
 
 /** Downloads, verifies and unpacks a library item into a temp folder, then installs it. */

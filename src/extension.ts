@@ -1,11 +1,12 @@
 import { promises as fs } from 'fs';
 import * as vscode from 'vscode';
-import { GITHUB_PROVIDER } from './auth';
+import { AUTH_PROVIDERS } from './auth';
 import { IndexItem } from './indexSchema';
 import { installFromLibrary, installIntoWorkspace, pickWorkspaceFolder } from './installFlow';
 import { LibraryService } from './library';
 import { LOCK_FILE_PATH } from './lockFile';
 import { initLog, log, showLog } from './log';
+import { ManagedFiles, protectActiveEditor } from './managedFiles';
 import { isValidItemId } from './targets';
 import { SkillsTreeProvider } from './treeView';
 
@@ -25,8 +26,12 @@ export function activate(context: vscode.ExtensionContext): void {
 		}
 	};
 
+	const managed = new ManagedFiles();
 	const lockWatcher = vscode.workspace.createFileSystemWatcher(`**/${LOCK_FILE_PATH}`);
-	const reloadLock = (): void => void tree.reloadLock();
+	const reloadLock = (): void => {
+		void tree.reloadLock();
+		void managed.reload().then(() => protectActiveEditor(managed));
+	};
 
 	context.subscriptions.push(
 		library,
@@ -38,13 +43,14 @@ export function activate(context: vscode.ExtensionContext): void {
 		lockWatcher.onDidChange(reloadLock),
 		lockWatcher.onDidDelete(reloadLock),
 		vscode.workspace.onDidChangeWorkspaceFolders(reloadLock),
+		vscode.window.onDidChangeActiveTextEditor(() => void protectActiveEditor(managed)),
 		vscode.workspace.onDidChangeConfiguration((e) => {
-			if (e.affectsConfiguration('promptLibrary.repo')) {
+			if (e.affectsConfiguration('promptLibrary.repo') || e.affectsConfiguration('promptLibrary.githubUrl')) {
 				void library.refresh();
 			}
 		}),
 		vscode.authentication.onDidChangeSessions((e) => {
-			if (e.provider.id === GITHUB_PROVIDER) {
+			if (AUTH_PROVIDERS.includes(e.provider.id)) {
 				void library.refresh();
 			}
 		}),
@@ -56,6 +62,7 @@ export function activate(context: vscode.ExtensionContext): void {
 		vscode.commands.registerCommand('promptLibrary.updateItem', (item?: IndexItem) => guarded(() => installCommand(library, item))),
 	);
 
+	reloadLock();
 	void library.refresh();
 }
 

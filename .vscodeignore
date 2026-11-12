@@ -13,3 +13,4 @@ out/test/**
 CLAUDE.md
 .github/**
 *.vsix
+scripts/**

@@ -14,6 +14,13 @@ async function write(root: string, rel: string, data: string): Promise<void> {
 	await fs.writeFile(abs, data);
 }
 
+/** Simulates a user forcing an edit: clears the read-only flag, then writes. */
+async function forceWrite(root: string, rel: string, data: string): Promise<void> {
+	const abs = path.join(root, ...rel.split('/'));
+	await fs.chmod(abs, 0o644);
+	await fs.writeFile(abs, data);
+}
+
 async function read(root: string, rel: string): Promise<string> {
 	return fs.readFile(path.join(root, ...rel.split('/')), 'utf8');
 }
@@ -73,7 +80,7 @@ suite('installer', () => {
 		const lock = await installAndLock(emptyLockFile());
 		assert.strictEqual((await checkTargets(ws, 'demo', targets, lock))[0].state, 'clean');
 
-		await write(ws, '.claude/skills/demo/SKILL.md', 'edited');
+		await forceWrite(ws, '.claude/skills/demo/SKILL.md', 'edited');
 		assert.strictEqual((await checkTargets(ws, 'demo', targets, lock))[0].state, 'modified');
 	});
 
@@ -84,6 +91,7 @@ suite('installer', () => {
 		assert.strictEqual((await checkTargets(ws, 'demo', targets, lock))[0].state, 'modified');
 
 		lock = await installAndLock(lock);
+		await fs.chmod(path.join(ws, '.claude', 'skills', 'demo', 'templates', 't.md'), 0o644);
 		await fs.rm(path.join(ws, '.claude', 'skills', 'demo', 'templates', 't.md'));
 		assert.strictEqual((await checkTargets(ws, 'demo', targets, lock))[0].state, 'modified');
 	});
@@ -99,7 +107,7 @@ suite('installer', () => {
 
 	test('a failed swap rolls back folders already swapped', async () => {
 		await installAndLock(emptyLockFile(), 'dedicated');
-		await write(ws, '.claude/skills/demo/SKILL.md', 'previous');
+		await forceWrite(ws, '.claude/skills/demo/SKILL.md', 'previous');
 		// Make the second target unwritable: .github becomes a file, so mkdir under it fails.
 		await fs.rm(path.join(ws, '.github'), { recursive: true });
 		await fs.writeFile(path.join(ws, '.github'), 'not a folder');
@@ -108,6 +116,29 @@ suite('installer', () => {
 		await assert.rejects(installItem(ws, item, resolveTargets('demo', ['claude', 'copilot'], 'dedicated')));
 		assert.strictEqual(await read(ws, '.claude/skills/demo/SKILL.md'), 'previous');
 		assert.ok(!(await exists(path.join(ws, ...STAGING_DIR.split('/')))), 'staging folder removed');
+	});
+
+	test('installed files are read-only and scripts stay executable', async () => {
+		await write(item.sourceDir, 'scripts/run.sh', 'echo hi');
+		await installItem(ws, item, resolveTargets('demo', ['claude'], 'shared'));
+		const skill = path.join(ws, '.claude', 'skills', 'demo', 'SKILL.md');
+		await assert.rejects(fs.writeFile(skill, 'edit'), /EPERM|EACCES/);
+		if (process.platform !== 'win32') {
+			const mode = (await fs.stat(path.join(ws, '.claude', 'skills', 'demo', 'scripts', 'run.sh'))).mode & 0o777;
+			assert.strictEqual(mode, 0o555);
+		}
+	});
+
+	test('reinstall replaces a locally edited, read-only skill', async () => {
+		await installAndLock(emptyLockFile());
+		await forceWrite(ws, '.claude/skills/demo/SKILL.md', 'local edit');
+		await installItem(ws, item, resolveTargets('demo', ['claude'], 'shared'));
+		assert.match(await read(ws, '.claude/skills/demo/SKILL.md'), /^---/);
+	});
+
+	test('readOnly: false leaves files writable', async () => {
+		await installItem(ws, item, resolveTargets('demo', ['claude'], 'shared'), { readOnly: false });
+		await fs.writeFile(path.join(ws, '.claude', 'skills', 'demo', 'SKILL.md'), 'ok');
 	});
 
 	test('rejects an item without SKILL.md', async () => {
