@@ -1,0 +1,91 @@
+{
+  "name": "prompt-library",
+  "displayName": "Prompt Library",
+  "description": "Installs and updates a shared library of agent skills for Claude Code, GitHub Copilot, and Cortex Code.",
+  "version": "0.0.1",
+  "publisher": "local",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ekbrothers/agent-skills-vscode.git"
+  },
+  "engines": {
+    "vscode": "^1.146.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "promptLibrary.installSampleSkill",
+        "title": "Install Sample Skill",
+        "category": "Prompt Library"
+      }
+    ],
+    "configuration": {
+      "title": "Prompt Library",
+      "properties": {
+        "promptLibrary.tools": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "claude",
+              "copilot",
+              "cortex"
+            ]
+          },
+          "uniqueItems": true,
+          "default": [
+            "claude",
+            "copilot",
+            "cortex"
+          ],
+          "markdownDescription": "Tools to install skills for."
+        },
+        "promptLibrary.pathStrategy": {
+          "type": "string",
+          "enum": [
+            "shared",
+            "dedicated"
+          ],
+          "enumDescriptions": [
+            "Every tool reads `.claude/skills/`, so each skill is written once.",
+            "Each tool gets its own folder: `.claude/skills/`, `.github/skills/`, `.cortex/skills/`."
+          ],
+          "default": "shared",
+          "markdownDescription": "Where skills are written."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src",
+    "test": "vscode-test",
+    "test:unit": "npm run compile && mocha --ui tdd \"out/test/unit/**/*.test.js\"",
+    "package": "vsce package --no-dependencies --skip-license"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "24.x",
+    "@types/vscode": "^1.146.0",
+    "@vscode/test-cli": "^0.0.15",
+    "@vscode/test-electron": "^3.0.0",
+    "@vscode/vsce": "^4.1.0",
+    "eslint": "^10.5.0",
+    "mocha": "^11.8.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.61.1"
+  },
+  "overrides": {
+    "diff": "^8.0.4",
+    "serialize-javascript": "^7.0.6"
+  }
+}
