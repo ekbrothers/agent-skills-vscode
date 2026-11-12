@@ -62,7 +62,11 @@ Distribution:
 - Layer 2, the extension itself (VS Code handles it): Private Marketplace auto-update. Keep the extension small and stable so it rarely needs a release.
 
 ### Modules
-- `auth`: `vscode.authentication.getSession('github', ['repo'])`. Anything else goes in `SecretStorage`.
+- `auth`: tries, without prompting: the VS Code GitHub session (`getSession('github', ['repo'], { silent: true })`), then `gh auth token`, then no token (public repos). Only if all of these get 401 or 404 does the view offer "Sign in to GitHub", which calls `getSession` with `createIfNone`. Tokens are never logged or stored by the extension.
+- `github`: latest release and asset download. Asset redirects are followed by hand so the token never goes to the storage host. A 403 with `x-github-sso` becomes an `sso` error carrying the authorization URL.
+- `archive`: reads the gzipped ustar archives in memory. Refuses unsafe paths, links, pax headers, duplicates and bad checksums.
+- `library`: holds the latest index, the release and the credential that worked. Verifies sha256 before an archive is unpacked.
+- `installFlow`: shared install path for bundled samples and library items (scripts warning, overwrite confirmation, lock file).
 - `indexClient`: fetches `index.json` from the latest release of the content repo.
 - `installer`: downloads the archive, verifies sha256, extracts to a temp folder, then renames into place atomically.
 - `targets`: the three adapters (claude, copilot, cortex) plus the path resolver (below).
@@ -157,7 +161,7 @@ Local edit detection: hash the file on disk and compare to the recorded hash. St
 
 ## Stages
 
-Status (2026-11-12): Stage 2 code is done and tested; the acceptance check below still needs Evan. The content repo and the `.vsix` workflows from Stage 5 were pulled forward at Evan's request.
+Status (2026-11-12): Stages 2 and 3 code is done and tested. The Stage 2 acceptance check and the Stage 3 SSO check still need Evan. The content repo and the `.vsix` workflows from Stage 5 were pulled forward at Evan's request. Stage 3 was verified end to end against the public test release without a token.
 
 ### Stage 2: scaffold and install
 Do:
@@ -176,9 +180,10 @@ Acceptance check (Evan runs this, report results back):
 
 Stop and summarize.
 
-### Stage 3: index, auth, tree view
+### Stage 3: index, auth, tree view (built)
 - GitHub sign-in, fetch `index.json`, tree view with install actions.
-- First check whether SAML SSO or OAuth app restrictions block the sign-in. Report before building further.
+- Still open: check whether SAML SSO or OAuth app restrictions block the sign-in, against the real org. The code detects the SSO case and shows an Authorize link, but cannot fix an org that blocks the VS Code OAuth app; in that case `gh` (if its OAuth app is approved) is the fallback.
+- Limitations: install state in the tree comes from the first workspace folder's lock file. No local-edit indicator in the tree yet (Stage 4).
 
 ### Stage 4: update engine
 - Triggers, silent update, local edit handling, diff view, `autoUpdate` setting.

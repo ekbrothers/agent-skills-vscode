@@ -18,16 +18,117 @@
   "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "promptLibrary",
+          "title": "Prompt Library",
+          "icon": "resources/activitybar.svg"
+        }
+      ]
+    },
+    "views": {
+      "promptLibrary": [
+        {
+          "id": "promptLibrary.skills",
+          "name": "Skills"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "promptLibrary.skills",
+        "when": "promptLibrary.status == noRepo",
+        "contents": "Set the GitHub repo that holds the skills library.\n[Open Settings](command:workbench.action.openSettings?%5B%22promptLibrary.repo%22%5D)"
+      },
+      {
+        "view": "promptLibrary.skills",
+        "when": "promptLibrary.status == signInRequired",
+        "contents": "Sign in to GitHub to read the skills library.\n[Sign in to GitHub](command:promptLibrary.signIn)\nThe GitHub CLI (gh) is also used if it is signed in."
+      },
+      {
+        "view": "promptLibrary.skills",
+        "when": "promptLibrary.status == error || promptLibrary.status == sso",
+        "contents": "[Retry](command:promptLibrary.refresh)\n[Sign in with a different account](command:promptLibrary.signIn)\n[Show Log](command:promptLibrary.showLog)"
+      }
+    ],
     "commands": [
       {
         "command": "promptLibrary.installSampleSkill",
         "title": "Install Sample Skill",
         "category": "Prompt Library"
+      },
+      {
+        "command": "promptLibrary.installItem",
+        "title": "Install Skill",
+        "category": "Prompt Library",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "promptLibrary.updateItem",
+        "title": "Update Skill",
+        "category": "Prompt Library",
+        "icon": "$(arrow-circle-up)"
+      },
+      {
+        "command": "promptLibrary.refresh",
+        "title": "Refresh",
+        "category": "Prompt Library",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "promptLibrary.signIn",
+        "title": "Sign in to GitHub",
+        "category": "Prompt Library"
+      },
+      {
+        "command": "promptLibrary.showLog",
+        "title": "Show Log",
+        "category": "Prompt Library"
       }
     ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "promptLibrary.refresh",
+          "when": "view == promptLibrary.skills",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "promptLibrary.installItem",
+          "when": "view == promptLibrary.skills && viewItem == skill.notInstalled",
+          "group": "inline"
+        },
+        {
+          "command": "promptLibrary.updateItem",
+          "when": "view == promptLibrary.skills && viewItem == skill.updateAvailable",
+          "group": "inline"
+        },
+        {
+          "command": "promptLibrary.installItem",
+          "when": "view == promptLibrary.skills && viewItem =~ /^skill./",
+          "group": "1_actions"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "promptLibrary.updateItem",
+          "when": "false"
+        }
+      ]
+    },
     "configuration": {
       "title": "Prompt Library",
       "properties": {
+        "promptLibrary.repo": {
+          "type": "string",
+          "default": "",
+          "pattern": "^([A-Za-z0-9-]+/[A-Za-z0-9._-]+)?$",
+          "patternErrorMessage": "Use owner/name.",
+          "markdownDescription": "GitHub repo (`owner/name`) whose latest release holds `index.json` and the skill archives."
+        },
         "promptLibrary.tools": {
           "type": "array",
           "items": {
